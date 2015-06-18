@@ -207,10 +207,157 @@ References
 # ----------------------------------------------------------------------------
 
 from __future__ import absolute_import, division, print_function
+import string
+from functools import partial
 
-from skbio.alignment import Alignment
-from skbio.io import register_writer, PhylipFormatError
-from skbio.io._base import _chunk_str
+from skbio.alignment import Alignment, SequenceCollection
+from skbio.sequence import Sequence, DNA, RNA, Protein
+from skbio.io import register_reader, register_writer, PhylipFormatError
+from skbio.io._base import _chunk_str, _line_generator, _get_nth_sequence
+
+
+_whitespace_translate_table = str.maketrans(
+    {c: '' for c in string.whitespace}
+)
+
+
+def _parse_phylip_header(header, raise_exc=False):
+    """Parses the header of a PHYLIP file"""
+
+    parts = header.split()
+
+    if len(parts) != 2:
+        if raise_exc:
+            raise PhylipFormatError(
+                "Could not parse the header of a PHYLIP file. It should "
+                "contain only two integers, but we found %d elements on this "
+                "line.\nThe line we tried to parse: \n\n '%s'" % (
+                    len(parts), header.strip()
+                )
+            )
+        else:
+            return None
+
+    try:
+        return (int(parts[0]), int(parts[1]))
+    except ValueError:
+        if raise_exc:
+            raise PhylipFormatError(
+                "Could not the parse the header of a PHYLIP file. The values "
+                "on this line are not integers.\nThe line we tried to parse:"
+                "\n\n'%s'" % header.strip()
+            )
+        else:
+            return None
+
+
+def relaxed_ids(line, delimiters=string.whitespace):
+    pos = min(line.find(c) for c in delimiters if line.find(c) > 0)
+    id_ = line[0:pos]
+    sequence = line[pos:].translate(_whitespace_translate_table)
+
+    return (sequence, id_)
+
+
+def strict_ids(line, id_length=10):
+    id_ = line[0:id_length]
+    sequence = line[id_length:].translate(_whitespace_translate_table)
+
+    return (sequence, id_)
+
+
+def _parse_phylip_raw(fh, data_parser, interleaved=False):
+    """Raw parser for PHYLIP files."""
+
+    phylip_iter = _line_generator(fh, skip_blanks=True)
+    header = next(phylip_iter)
+    num_seq, seq_len = _parse_phylip_header(header, raise_exc=True)
+
+    for line in phylip_iter:
+        sequence, id_ = data_parser(line)
+
+        if len(sequence) == seq_len:
+            yield (sequence, id_)
+        else:
+            pass  # TODO: Parse sequences in interleaved format
+
+
+@register_reader('phylip')
+def _phylip_to_generator(fh, data_parser=strict_ids, interleaved=False,
+                         constructor=Sequence):
+    for seq, id_ in _parse_phylip_raw(fh, data_parser, interleaved):
+        yield constructor(seq, metadata={'id': id_})
+
+
+@register_reader('phylip', Sequence)
+def _phylip_to_sequence(fh, data_parser=strict_ids, interleaved=False,
+                        seq_num=1):
+    return _get_nth_sequence(
+        _phylip_to_generator(fh, data_parser=data_parser,
+                             interleaved=interleaved, constructor=Sequence),
+        seq_num
+    )
+
+
+@register_reader('phylip', DNA)
+def _phylip_to_dna_sequence(fh, data_parser=strict_ids, interleaved=False,
+                            seq_num=1):
+    return _get_nth_sequence(
+        _phylip_to_generator(
+            fh, data_parser=data_parser,
+            interleaved=interleaved,
+            constructor=partial(DNA, validate=False)
+        ),
+        seq_num
+    )
+
+
+@register_reader('phylip', RNA)
+def _phylip_to_rna_sequence(fh, data_parser=strict_ids, interleaved=False,
+                            seq_num=1):
+    return _get_nth_sequence(
+        _phylip_to_generator(
+            fh, data_parser=data_parser,
+            interleaved=interleaved,
+            constructor=partial(RNA, validate=False)
+        ),
+        seq_num
+    )
+
+
+@register_reader('phylip', Protein)
+def _phylip_to_protein_sequence(fh, data_parser=strict_ids,
+                                interleaved=False, seq_num=1):
+    return _get_nth_sequence(
+        _phylip_to_generator(
+            fh, data_parser=data_parser,
+            interleaved=interleaved,
+            constructor=partial(Protein, validate=False)
+        ),
+        seq_num
+    )
+
+
+@register_reader('phylip', SequenceCollection)
+def _phylip_to_sequence_collection(fh, data_parser=strict_ids,
+                                   interleaved=False, constructor=Sequence):
+    return SequenceCollection(
+        list(_phylip_to_generator(
+            fh, data_parser=data_parser,
+            interleaved=interleaved, constructor=constructor
+        ))
+    )
+
+
+@register_reader('phylip', Alignment)
+def _phylip_to_alignment(fh, data_parser=strict_ids, interleaved=False,
+                         constructor=Sequence):
+    return Alignment(
+        list(_phylip_to_generator(
+            fh, data_parser=data_parser,
+            interleaved=interleaved, constructor=constructor
+        ))
+    )
 
 
 @register_writer('phylip', Alignment)
