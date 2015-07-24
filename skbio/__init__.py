@@ -13,7 +13,7 @@ from skbio.util import TestRunner
 # Add skbio.io to sys.modules to prevent cycles in our imports
 import skbio.io  # noqa
 # imports included for convenience
-from skbio.sequence import Sequence, DNA, RNA, Protein
+from skbio.sequence import Sequence, DNA, RNA, Protein, GeneticCode
 from skbio.stats.distance import DistanceMatrix
 from skbio.alignment import (
     local_pairwise_align_ssw, SequenceCollection, Alignment)
@@ -21,12 +21,12 @@ from skbio.tree import TreeNode, nj
 from skbio.io import read, write
 
 
-__all__ = ['Sequence', 'DNA', 'RNA', 'Protein', 'DistanceMatrix',
-           'local_pairwise_align_ssw', 'SequenceCollection',
+__all__ = ['Sequence', 'DNA', 'RNA', 'Protein', 'GeneticCode',
+           'DistanceMatrix', 'local_pairwise_align_ssw', 'SequenceCollection',
            'Alignment', 'TreeNode', 'nj', 'read', 'write']
 
 __credits__ = "https://github.com/biocore/scikit-bio/graphs/contributors"
-__version__ = "0.2.3-dev"
+__version__ = "0.4.0-dev"
 
 mottos = [
     # 03/15/2014

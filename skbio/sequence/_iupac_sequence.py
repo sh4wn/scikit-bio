@@ -13,8 +13,11 @@ from abc import ABCMeta, abstractproperty
 from itertools import product
 
 import numpy as np
+from six import string_types
 
-from skbio.util import classproperty, overrides
+import re
+
+from skbio.util._decorator import classproperty, overrides, stable
 from skbio.util._misc import MiniRegistry
 from ._sequence import Sequence
 
@@ -42,7 +45,6 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
 
     See Also
     --------
-    NucleotideSequence
     DNA
     RNA
     Protein
@@ -55,6 +57,9 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
        A Cornish-Bowden
 
     """
+    # ASCII is built such that the difference between uppercase and lowercase
+    # is the 6th bit.
+    _ascii_invert_case_bit_offset = 32
     _number_of_extended_ascii_codes = 256
     _ascii_lowercase_boundary = 90
     __validation_mask = None
@@ -94,6 +99,7 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
         return cls.__gap_codes
 
     @classproperty
+    @stable(as_of='0.4.0')
     def alphabet(cls):
         """Return valid IUPAC characters.
 
@@ -108,6 +114,7 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
         return cls.degenerate_chars | cls.nondegenerate_chars | cls.gap_chars
 
     @classproperty
+    @stable(as_of='0.4.0')
     def gap_chars(cls):
         """Return characters defined as gaps.
 
@@ -120,6 +127,7 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
         return set('-.')
 
     @classproperty
+    @stable(as_of='0.4.0')
     def degenerate_chars(cls):
         """Return degenerate IUPAC characters.
 
@@ -133,6 +141,7 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
 
     @abstractproperty
     @classproperty
+    @stable(as_of='0.4.0')
     def nondegenerate_chars(cls):
         """Return non-degenerate IUPAC characters.
 
@@ -146,6 +155,7 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
 
     @abstractproperty
     @classproperty
+    @stable(as_of='0.4.0')
     def degenerate_map(cls):
         """Return mapping of degenerate to non-degenerate characters.
 
@@ -164,23 +174,30 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
 
     @overrides(Sequence)
     def __init__(self, sequence, metadata=None, positional_metadata=None,
-                 validate=True, case_insensitive=False):
+                 validate=True, lowercase=False):
         super(IUPACSequence, self).__init__(
             sequence, metadata, positional_metadata)
 
-        if case_insensitive:
-            self._convert_to_uppercase()
+        if lowercase is False:
+            pass
+        elif lowercase is True or isinstance(lowercase, string_types):
+            lowercase_mask = self._bytes > self._ascii_lowercase_boundary
+            self._convert_to_uppercase(lowercase_mask)
+
+            # If it isn't True, it must be a string_type
+            if not (lowercase is True):
+                self.positional_metadata[lowercase] = lowercase_mask
+        else:
+            raise TypeError("lowercase keyword argument expected a bool or "
+                            "string, but got %s" % type(lowercase))
 
         if validate:
             self._validate()
 
-    def _convert_to_uppercase(self):
-        lowercase = self._bytes > self._ascii_lowercase_boundary
+    def _convert_to_uppercase(self, lowercase):
         if np.any(lowercase):
             with self._byte_ownership():
-                # ASCII is built such that the difference between uppercase and
-                # lowercase is the 6th bit.
-                self._bytes[lowercase] ^= 32
+                self._bytes[lowercase] ^= self._ascii_invert_case_bit_offset
 
     def _validate(self):
         # This is the fastest way that we have found to identify the
@@ -203,6 +220,54 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
                         len(bad) > 1 else bad[0],
                         list(self.alphabet)))
 
+    @stable(as_of='0.4.0')
+    def lowercase(self, lowercase):
+        """Return a case-sensitive string representation of the sequence.
+
+        Parameters
+        ----------
+        lowercase: str or boolean vector
+            If lowercase is a boolean vector, it is used to set sequence
+            characters to lowercase in the output string. True values in the
+            boolean vector correspond to lowercase characters. If lowercase
+            is a str, it is treated like a key into the positional metadata,
+            pointing to a column which must be a boolean vector.
+            That boolean vector is then used as described previously.
+
+        Returns
+        -------
+        str
+            String representation of sequence with specified characters set to
+            lowercase.
+
+        Examples
+        --------
+        >>> from skbio import DNA
+        >>> s = DNA('ACGT')
+        >>> s.lowercase([True, True, False, False])
+        'acGT'
+        >>> s = DNA('ACGT',
+        ...         positional_metadata={'exons': [True, False, False, True]})
+        >>> s.lowercase('exons')
+        'aCGt'
+
+        Constructor automatically populates a column in positional metadata
+        when the ``lowercase`` keyword argument is provided with a column name:
+
+        >>> s = DNA('ACgt', lowercase='introns')
+        >>> s.lowercase('introns')
+        'ACgt'
+        >>> s = DNA('ACGT', lowercase='introns')
+        >>> s.lowercase('introns')
+        'ACGT'
+
+        """
+        index = self._munge_to_index_array(lowercase)
+        outbytes = self._bytes.copy()
+        outbytes[index] ^= self._ascii_invert_case_bit_offset
+        return str(outbytes.tostring().decode('ascii'))
+
+    @stable(as_of='0.4.0')
     def gaps(self):
         """Find positions containing gaps in the biological sequence.
 
@@ -226,6 +291,7 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
         """
         return np.in1d(self._bytes, self._gap_codes)
 
+    @stable(as_of='0.4.0')
     def has_gaps(self):
         """Determine if the sequence contains one or more gap characters.
 
@@ -247,8 +313,10 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
 
         """
         # TODO use count, there aren't that many gap chars
+        # TODO: cache results
         return bool(self.gaps().any())
 
+    @stable(as_of='0.4.0')
     def degenerates(self):
         """Find positions containing degenerate characters in the sequence.
 
@@ -274,6 +342,7 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
         """
         return np.in1d(self._bytes, self._degenerate_codes)
 
+    @stable(as_of='0.4.0')
     def has_degenerates(self):
         """Determine if sequence contains one or more degenerate characters.
 
@@ -301,8 +370,10 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
 
         """
         # TODO use bincount!
+        # TODO: cache results
         return bool(self.degenerates().any())
 
+    @stable(as_of='0.4.0')
     def nondegenerates(self):
         """Find positions containing non-degenerate characters in the sequence.
 
@@ -328,6 +399,7 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
         """
         return np.in1d(self._bytes, self._nondegenerate_codes)
 
+    @stable(as_of='0.4.0')
     def has_nondegenerates(self):
         """Determine if sequence contains one or more non-degenerate characters
 
@@ -354,8 +426,10 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
         True
 
         """
+        # TODO: cache results
         return bool(self.nondegenerates().any())
 
+    @stable(as_of='0.4.0')
     def degap(self):
         """Return a new sequence with gap characters removed.
 
@@ -380,14 +454,24 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
         >>> from skbio import DNA
         >>> s = DNA('GGTC-C--ATT-C.',
         ...         positional_metadata={'quality':range(14)})
-        >>> t = s.degap()
-        >>> t # doctest: +NORMALIZE_WHITESPACE
-        DNA('GGTCCATTC', length=9, has_metadata=False,
-            has_positional_metadata=True)
+        >>> s.degap()
+        DNA
+        -----------------------------
+        Positional metadata:
+            'quality': <dtype: int64>
+        Stats:
+            length: 9
+            has gaps: False
+            has degenerates: False
+            has non-degenerates: True
+            GC-content: 55.56%
+        -----------------------------
+        0 GGTCCATTC
 
         """
         return self[np.invert(self.gaps())]
 
+    @stable(as_of='0.4.0')
     def expand_degenerates(self):
         """Yield all possible non-degenerate versions of the sequence.
 
@@ -415,8 +499,29 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
         >>> seq_generator = seq.expand_degenerates()
         >>> for s in sorted(seq_generator, key=str):
         ...     s
-        DNA('TAG', length=3, has_metadata=False, has_positional_metadata=False)
-        DNA('TGG', length=3, has_metadata=False, has_positional_metadata=False)
+        ...     print('')
+        DNA
+        -----------------------------
+        Stats:
+            length: 3
+            has gaps: False
+            has degenerates: False
+            has non-degenerates: True
+            GC-content: 33.33%
+        -----------------------------
+        0 TAG
+        <BLANKLINE>
+        DNA
+        -----------------------------
+        Stats:
+            length: 3
+            has gaps: False
+            has degenerates: False
+            has non-degenerates: True
+            GC-content: 66.67%
+        -----------------------------
+        0 TGG
+        <BLANKLINE>
 
         """
         degen_chars = self.degenerate_map
@@ -434,6 +539,39 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
         return (self._to(sequence=''.join(nondegen_seq)) for nondegen_seq in
                 result)
 
+    @stable(as_of='0.4.0-dev')
+    def to_regex(self):
+        """Return a regular expression object that accounts for degenerate chars.
+
+        Returns
+        -------
+        regex
+            Pre-compiled regular expression object (as from ``re.compile``)
+            that matches all non-degenerate versions of this sequence, and
+            nothing else.
+
+        Examples
+        --------
+        >>> from skbio import DNA
+        >>> seq = DNA('TRG')
+        >>> regex = seq.to_regex()
+        >>> regex.pattern
+        'T[AG]G'
+        >>> regex.match('TAG').string
+        'TAG'
+        >>> regex.match('TCG') is None
+        True
+        """
+        regex_string = []
+        for base in str(self):
+            if base in self.degenerate_chars:
+                regex_string.append('[{0}]'.format(
+                    ''.join(self.degenerate_map[base])))
+            else:
+                regex_string.append(base)
+        return re.compile(''.join(regex_string))
+
+    @stable(as_of='0.4.0')
     def find_motifs(self, motif_type, min_length=1, ignore=None):
         """Search the biological sequence for motifs.
 
@@ -494,7 +632,16 @@ class IUPACSequence(with_metaclass(ABCMeta, Sequence)):
 
     @overrides(Sequence)
     def _constructor(self, **kwargs):
-        return self.__class__(validate=False, case_insensitive=False, **kwargs)
+        return self.__class__(validate=False, lowercase=False, **kwargs)
+
+    @overrides(Sequence)
+    def _repr_stats(self):
+        """Define custom statistics to display in the sequence's repr."""
+        stats = super(IUPACSequence, self)._repr_stats()
+        stats.append(('has gaps', '%r' % self.has_gaps()))
+        stats.append(('has degenerates', '%r' % self.has_degenerates()))
+        stats.append(('has non-degenerates', '%r' % self.has_nondegenerates()))
+        return stats
 
 
 _motifs = MiniRegistry()

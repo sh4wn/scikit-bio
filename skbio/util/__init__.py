@@ -18,15 +18,7 @@ Common functionality to support testing in skbio.
 
    get_data_path
    TestRunner
-
-Decorators
-----------
-
-.. autosummary::
-    :toctree: generated/
-
-    classproperty
-    overrides
+   assert_data_frame_almost_equal
 
 Miscellaneous functionality
 ---------------------------
@@ -70,16 +62,18 @@ Warnings
 # The full license is in the file COPYING.txt, distributed with this software.
 # ----------------------------------------------------------------------------
 
+from __future__ import absolute_import, division, print_function
+
 from ._warning import EfficiencyWarning
 from ._exception import TestingUtilError
-from ._decorator import classproperty, overrides
 from ._misc import (cardinal_to_ordinal, create_dir, find_duplicates, flatten,
                     is_casava_v180_or_later, remove_files, safe_md5)
-from ._testing import get_data_path, TestRunner
+from ._testing import (get_data_path, TestRunner,
+                       assert_data_frame_almost_equal)
 
-__all__ = ['EfficiencyWarning', 'TestingUtilError', 'classproperty',
-           'cardinal_to_ordinal', 'create_dir', 'find_duplicates', 'flatten',
+__all__ = ['EfficiencyWarning', 'TestingUtilError', 'cardinal_to_ordinal',
+           'create_dir', 'find_duplicates', 'flatten',
            'is_casava_v180_or_later', 'remove_files', 'safe_md5',
-           'get_data_path', 'TestRunner', 'overrides']
+           'get_data_path', 'TestRunner', 'assert_data_frame_almost_equal']
 
 test = TestRunner(__file__).test
