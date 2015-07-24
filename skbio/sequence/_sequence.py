@@ -616,6 +616,33 @@ class Sequence(collections.Sequence, SkbioObject):
         for i in range(len(self)):
             yield self[i]
 
+    def sliding_window(self, n):
+        """A sliding window generator of length `n` for this sequence.
+
+        Yields
+        ------
+        Sequence
+            The current subsequence of length `n` as str object.
+
+        Examples
+        --------
+        >>> from skbio import Sequence
+        >>> s = Sequence('ACTGTTT')
+        >>> for w in s.sliding_window(2):
+        ...     w
+        'AC'
+        'CT'
+        'TG'
+        'GT'
+        'TT'
+        'TT'
+
+        """
+
+        sequence = str(self)
+        for i in range(len(self) - n + 1):
+            yield sequence[i:i+n]
+
     def __reversed__(self):
         """Iterate over positions in the biological sequence in reverse order.
 
