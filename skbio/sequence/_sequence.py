@@ -953,7 +953,7 @@ class Sequence(collections.Sequence, SkbioObject):
         for i in range(len(self)):
             yield self[i]
 
-    @experimental
+    @experimental(as_of="0.4.0")
     def sliding_window(self, n):
         """A sliding window generator of length `n` for this sequence.
 
