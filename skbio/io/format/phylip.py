@@ -302,7 +302,6 @@ def _parse_phylip_raw(fh, data_parser, interleaved=False):
             pass  # TODO: Parse sequences in interleaved format
 
 
-@phylip.reader
 def _phylip_to_generator(fh, data_parser=strict_ids, interleaved=False,
                          constructor=Sequence):
     for seq, id_ in _parse_phylip_raw(fh, data_parser, interleaved):
